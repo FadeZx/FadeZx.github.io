@@ -420,10 +420,8 @@ function teFromCR(){
 
 function teFromWH(){
   if(!tsImg)return;
-  const tw=Math.max(1,parseInt(teTW.value)||1);
-  const th=Math.max(1,parseInt(teTH.value)||1);
-  teCols.value=Math.max(1,Math.floor(tsImg.width/tw));
-  teRows.value=Math.max(1,Math.floor(tsImg.height/th));
+  teTW.value=Math.max(1,parseInt(teTW.value)||1);
+  teTH.value=Math.max(1,parseInt(teTH.value)||1);
   teRedraw();
 }
 
@@ -434,6 +432,10 @@ function teRedraw(){
   const tw=Math.max(1,parseInt(teTW.value)||1);
   const th=Math.max(1,parseInt(teTH.value)||1);
   const z=Math.max(1,parseInt(teZoom.value)||2);
+  const dispW=cols*tw*z;
+  const dispH=rows*th*z;
+  const srcW=cols*tw;
+  const srcH=rows*th;
 
   // Info bar
   $('teIS').textContent=tsImg.width+'×'+tsImg.height;
@@ -441,13 +443,13 @@ function teRedraw(){
   $('teTT').textContent=cols*rows;
 
   // Size image
-  teImgEl.style.width=(tsImg.width*z)+'px';
-  teImgEl.style.height=(tsImg.height*z)+'px';
+  teImgEl.style.width=dispW+'px';
+  teImgEl.style.height=dispH+'px';
 
   // Grid overlay canvas
   const oc=teOC;
-  oc.width=tsImg.width*z;
-  oc.height=tsImg.height*z;
+  oc.width=dispW;
+  oc.height=dispH;
   const ctx=oc.getContext('2d');
   ctx.clearRect(0,0,oc.width,oc.height);
 
@@ -484,10 +486,17 @@ function teRedraw(){
   const pcols=Math.max(2,Math.min(cols,Math.floor(300/Math.max(24,260/cols))));
   pg.style.gridTemplateColumns='repeat('+pcols+',1fr)';
 
+  const scaledSrc=document.createElement('canvas');
+  scaledSrc.width=srcW;
+  scaledSrc.height=srcH;
+  const scaledCtx=scaledSrc.getContext('2d');
+  scaledCtx.imageSmoothingEnabled=false;
+  scaledCtx.drawImage(tsImg,0,0,srcW,srcH);
+
   for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
     const tc=document.createElement('canvas');
     tc.width=tw;tc.height=th;
-    tc.getContext('2d').drawImage(tsImg,c*tw,r*th,tw,th,0,0,tw,th);
+    tc.getContext('2d').drawImage(scaledSrc,c*tw,r*th,tw,th,0,0,tw,th);
     cutBuf.push(tc);
 
     const el=document.createElement('div');
