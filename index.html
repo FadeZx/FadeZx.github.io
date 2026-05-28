@@ -123,7 +123,7 @@ input[type="file"]{display:none}
 <!-- File inputs at body level so they always work -->
 <input type="file" id="fImp" accept="image/*">
 <input type="file" id="fLoad" accept=".txt,.mem,.json">
-<input type="file" id="fPalLoad" accept=".mem">
+<input type="file" id="fPalLoad" accept=".mem,.meme">
 
 <!-- ========== TILESET EDITOR OVERLAY ========== -->
 <div id="TE">
@@ -249,6 +249,7 @@ input[type="file"]{display:none}
       <div id="palPreviewGrid" style="display:grid;gap:8px"></div>
     </div>
     <div class="mbt">
+      <button class="b" id="palTrim">Trim Blank End</button>
       <button class="b" id="palCancel">Cancel</button>
       <button class="b pri" id="palExport">Export palette.mem</button>
     </div>
@@ -282,7 +283,7 @@ const teEl=$('TE'), teImgEl=$('teImg'), teOC=$('teOC');
 const teCols=$('teCols'), teRows=$('teRows'), teTW=$('teTW'), teTH=$('teTH'), teZoom=$('teZ');
 
 // ===== STATE =====
-const S={tw:32,th:32,ptw:32,pth:32,lw:20,lh:15,tool:'paint',sel:0,zoom:1,px:20,py:20,panning:false,painting:false,lp:null,tiles:[],data:null,undo:[],redo:[]};
+const S={tw:32,th:32,ptw:32,pth:32,pcols:16,lw:20,lh:15,tool:'paint',sel:0,zoom:1,px:20,py:20,panning:false,painting:false,lp:null,tiles:[],data:null,undo:[],redo:[]};
 let tsImg=null, cutBuf=[], levelModalMode='new';
 
 // ===== HELPERS =====
@@ -308,6 +309,91 @@ function fitTileCanvas(src,w,h){
 }
 function rgb444Hex(r,g,b){
   return ((r>>4)<<8 | (g>>4)<<4 | (b>>4)).toString(16).toUpperCase().padStart(3,'0');
+}
+function uniqueDims(ar){
+  const seen=new Set();
+  return ar.filter(d=>{
+    if(!d)return false;
+    const k=d.w+'x'+d.h;
+    if(seen.has(k))return false;
+    seen.add(k);
+    return d.w>0&&d.h>0&&d.w<=512&&d.h<=512;
+  });
+}
+function memWordsAndMeta(text,fileName){
+  const vals=[], meta={};
+  const nameDims=(fileName||'').match(/(\d+)\s*x\s*(\d+)/i);
+  if(nameDims){meta.tileWidth=parseInt(nameDims[1],10);meta.tileHeight=parseInt(nameDims[2],10)}
+  text.split(/\r?\n/).forEach(line=>{
+    const header=line.match(/^\s*(?:;|\/\/)?\s*(?:PAL(?:ETTE)?_)?TILE_(WIDTH|HEIGHT)\s*=\s*(\d+)/i);
+    if(header)meta[header[1].toLowerCase()==='width'?'tileWidth':'tileHeight']=parseInt(header[2],10);
+    const cols=line.match(/^\s*(?:;|\/\/)?\s*COLUMNS\s*=\s*(\d+)/i);
+    if(cols)meta.columns=parseInt(cols[1],10);
+    const clean=line.replace(/(?:;|\/\/).*$/,'').trim();
+    if(!clean)return;
+    clean.split(/[\s,]+/).forEach(tok=>{
+      if(/^(?:0x)?[0-9a-fA-F]{1,6}$/.test(tok))vals.push(tok);
+    });
+  });
+  return{vals,meta};
+}
+function paletteLayout(total,meta){
+  const cols=clampInt(meta.columns,16,1,256);
+  const valid=(w,h)=>w&&h&&total%(cols*w*h)===0;
+  const preferred=uniqueDims([
+    {w:meta.tileWidth,h:meta.tileHeight},
+    {w:S.tw,h:S.th},
+    {w:S.ptw,h:S.pth},
+    {w:8,h:8},{w:16,h:16},{w:24,h:24},{w:32,h:32},{w:48,h:48},{w:64,h:64},
+    {w:16,h:32},{w:32,h:16},{w:50,h:200},{w:200,h:50}
+  ]);
+  for(const d of preferred)if(valid(d.w,d.h))return{cols,w:d.w,h:d.h,rows:total/(cols*d.w*d.h)};
+
+  const candidates=[];
+  for(let rows=1;rows<=64;rows++){
+    if(total%(cols*rows)!==0)continue;
+    const area=total/(cols*rows);
+    for(let w=1;w*w<=area;w++){
+      if(area%w!==0)continue;
+      const h=area/w;
+      if(w<=512&&h<=512){
+        candidates.push({w,h,rows,score:Math.abs(w-h)+rows*8});
+        if(w!==h)candidates.push({w:h,h:w,rows,score:Math.abs(w-h)+rows*8});
+      }
+    }
+  }
+  candidates.sort((a,b)=>a.score-b.score);
+  return candidates[0]?{cols,w:candidates[0].w,h:candidates[0].h,rows:candidates[0].rows}:null;
+}
+function tilesetGrid(img){
+  const fromName=(img._fileName||'').match(/(\d+)\s*x\s*(\d+)/i);
+  const named=fromName?{w:parseInt(fromName[1],10),h:parseInt(fromName[2],10)}:null;
+  const exact=uniqueDims([
+    named,
+    {w:S.ptw,h:S.pth},
+    {w:S.tw,h:S.th},
+    {w:8,h:8},{w:16,h:16},{w:24,h:24},{w:32,h:32},{w:48,h:48},{w:64,h:64},
+    {w:16,h:32},{w:32,h:16},{w:50,h:200},{w:200,h:50}
+  ]).filter(d=>img.width%d.w===0&&img.height%d.h===0);
+  if(exact.length){
+    const d=exact[0];
+    return{cols:img.width/d.w,rows:img.height/d.h,tw:d.w,th:d.h};
+  }
+
+  const candidates=[];
+  for(let cols=1;cols<=Math.min(256,img.width);cols++){
+    const tw=img.width/cols;
+    if(tw!==Math.floor(tw))continue;
+    for(let rows=1;rows<=Math.min(256,img.height);rows++){
+      const th=img.height/rows;
+      if(th!==Math.floor(th))continue;
+      const area=tw*th;
+      if(area<16||tw>512||th>512)continue;
+      candidates.push({cols,rows,tw,th,score:Math.abs(tw-th)+Math.abs(tw-16)*0.25+Math.abs(th-16)*0.25});
+    }
+  }
+  candidates.sort((a,b)=>a.score-b.score);
+  return candidates[0]||{cols:1,rows:1,tw:img.width,th:img.height};
 }
 
 // ===== CANVAS REFS (must be before init) =====
@@ -342,6 +428,7 @@ $('mCreate').onclick=newLevel;
 $('teOK').onclick=teConfirm;
 $('teNo').onclick=()=>teEl.classList.remove('vis');
 $('palCancel').onclick=()=>$('palM').classList.remove('vis');
+$('palTrim').onclick=trimPaletteEndForExport;
 $('palExport').onclick=()=>{exportPaletteMem();$('palM').classList.remove('vis')};
 
 // Tileset editor inputs
@@ -362,6 +449,7 @@ fImp.addEventListener('change',function(e){
     const img=new Image();
     img.onload=function(){
       console.log('[Import] Image loaded:',img.width,'x',img.height);
+      img._fileName=f.name;
       tsImg=img;
       openTE(img);
     };
@@ -401,12 +489,13 @@ function openTE(img){
   // Show image
   teImgEl.src=img.src;
 
-  // Auto-detect cols/rows
-  let c=Math.max(1,Math.round(img.width/S.ptw));
-  let r=Math.max(1,Math.round(img.height/S.pth));
-  if(c>256)c=8;if(r>256)r=8;
-  teCols.value=c; teRows.value=r;
-  teFromCR();
+  // Auto-detect a real cell size; never round into partial cells.
+  const g=tilesetGrid(img);
+  teCols.value=g.cols;
+  teRows.value=g.rows;
+  teTW.value=g.tw;
+  teTH.value=g.th;
+  teRedraw();
 }
 
 function teFromCR(){
@@ -519,6 +608,7 @@ function teConfirm(){
   if(!cutBuf.length)return;
   S.ptw=Math.max(1,parseInt(teTW.value)||32);
   S.pth=Math.max(1,parseInt(teTH.value)||32);
+  S.pcols=Math.max(1,parseInt(teCols.value)||16);
   S.tiles=[{canvas:checker(S.ptw,S.pth)}];
   cutBuf.forEach(c=>S.tiles.push({canvas:c}));
   S.sel=0;
@@ -590,6 +680,19 @@ function moveSelectedTile(dir){
   }
   S.sel=next;
   rebuildPal();render();updDP();
+}
+
+function removePaletteTile(i){
+  if(i<=0||i>=S.tiles.length)return;
+  S.tiles.splice(i,1);
+  for(let p=0;p<S.data.length;p++){
+    if(S.data[p]===i)S.data[p]=0;
+    else if(S.data[p]>i)S.data[p]--;
+  }
+  if(S.sel===i)S.sel=0;
+  else if(S.sel>i)S.sel--;
+  rebuildPal();render();updDP();
+  if($('palM').classList.contains('vis'))openPaletteExportPreview();
 }
 
 function clearAll(){
@@ -793,7 +896,7 @@ function xport(fmt){
 
 function openPaletteExportPreview(){
   if(!S.tiles.length){alert('No palette tiles to export.');return}
-  const cols=16;
+  const cols=Math.max(1,S.pcols||16);
   const rows=Math.max(1,Math.ceil(S.tiles.length/cols));
   $('palMeta').textContent='Tiles: '+S.tiles.length+' | Grid: '+cols+'×'+rows+' | Tile: '+S.ptw+'×'+S.pth;
   const g=$('palPreviewGrid');
@@ -811,6 +914,7 @@ function openPaletteExportPreview(){
     el.style.alignItems='center';
     el.style.justifyContent='center';
     el.style.gap='4px';
+    el.style.position='relative';
 
     const c=document.createElement('canvas');
     c.width=S.ptw;c.height=S.pth;
@@ -826,15 +930,57 @@ function openPaletteExportPreview(){
     lb.style.color='var(--tb)';
     lb.textContent=hex2(i&0xFF);
     el.appendChild(lb);
+
+    if(i>0){
+      const rm=document.createElement('button');
+      rm.type='button';
+      rm.className='b no';
+      rm.title='Remove tile '+hex2(i&0xFF);
+      rm.textContent='Remove';
+      rm.style.position='absolute';
+      rm.style.top='4px';
+      rm.style.right='4px';
+      rm.style.fontSize='9px';
+      rm.style.padding='1px 5px';
+      rm.style.opacity='0.9';
+      rm.addEventListener('click',e=>{e.stopPropagation();removePaletteTile(i)});
+      el.appendChild(rm);
+    }
     g.appendChild(el);
   }
   $('palM').classList.add('vis');
 }
 
+function isWhiteTile(tile){
+  if(!tile||!tile.canvas)return true;
+  const c=document.createElement('canvas');
+  c.width=S.ptw;c.height=S.pth;
+  const x=c.getContext('2d');
+  x.drawImage(tile.canvas,0,0,S.ptw,S.pth);
+  const data=x.getImageData(0,0,S.ptw,S.pth).data;
+  for(let p=0;p<data.length;p+=4){
+    if(!(data[p]===255&&data[p+1]===255&&data[p+2]===255))return false;
+  }
+  return true;
+}
+
+function trimPaletteEndForExport(){
+  let removed=0;
+  while(S.tiles.length>1&&isWhiteTile(S.tiles[S.tiles.length-1])){
+    S.tiles.pop();
+    removed++;
+  }
+  if(removed){
+    if(S.sel>=S.tiles.length)S.sel=0;
+    rebuildPal();render();updDP();
+  }
+  openPaletteExportPreview();
+}
+
 function exportPaletteMem(){
   if(!S.tiles.length){alert('No palette tiles to export.');return}
 
-  const cols=16;
+  const cols=Math.max(1,S.pcols||16);
   const rows=Math.max(1,Math.ceil(S.tiles.length/cols));
   const atlas=document.createElement('canvas');
   atlas.width=cols*S.ptw;
@@ -860,7 +1006,14 @@ function exportPaletteMem(){
     out.push(a===0?'FFF':rgb444Hex(img[i],img[i+1],img[i+2]));
   }
 
-  const blob=new Blob([out.join('\n')+'\n'],{type:'text/plain'});
+  const header=[
+    '; W2 Tile Palette MEM',
+    '; TILE_WIDTH='+S.ptw,
+    '; TILE_HEIGHT='+S.pth,
+    '; COLUMNS='+cols,
+    ''
+  ].join('\n');
+  const blob=new Blob([header+out.join('\n')+'\n'],{type:'text/plain'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
   a.download='palette.mem';
@@ -870,23 +1023,24 @@ function exportPaletteMem(){
 
 function importPaletteMem(f){
   f.text().then(t=>{
-    const raw=t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-    const vals=raw.filter(s=>!/^(;|\/\/)/.test(s));
+    const parsed=memWordsAndMeta(t,f.name);
+    const vals=parsed.vals;
     if(!vals.length){alert('Palette .mem is empty.');return}
 
-    const cols=16;
-    const pixelsPerRow=cols*S.ptw;
-    const tilePixels=S.ptw*S.pth;
-    const rowPixels=pixelsPerRow*S.pth;
-    if(vals.length%rowPixels!==0){
-      alert('Palette .mem does not match the current palette tile size '+S.ptw+'x'+S.pth+'.');
+    const layout=paletteLayout(vals.length,parsed.meta);
+    if(!layout){
+      alert('Could not detect palette .mem tile dimensions from '+vals.length+' pixels.');
       return;
     }
 
-    const rows=vals.length/rowPixels;
+    S.ptw=layout.w;
+    S.pth=layout.h;
+    S.pcols=layout.cols;
+    const cols=layout.cols;
+    const rows=layout.rows;
     const totalTiles=cols*rows;
     const atlas=document.createElement('canvas');
-    atlas.width=pixelsPerRow;
+    atlas.width=cols*S.ptw;
     atlas.height=rows*S.pth;
     const ctx=atlas.getContext('2d');
     const img=ctx.createImageData(atlas.width,atlas.height);
