@@ -123,6 +123,7 @@ input[type="file"]{display:none}
 <!-- File inputs at body level so they always work -->
 <input type="file" id="fImp" accept="image/*">
 <input type="file" id="fLoad" accept=".txt,.mem,.json">
+<input type="file" id="fPalLoad" accept=".mem">
 
 <!-- ========== TILESET EDITOR OVERLAY ========== -->
 <div id="TE">
@@ -195,7 +196,10 @@ input[type="file"]{display:none}
       <div class="pp-h">Tile Palette <span id="pCt" style="color:var(--acc)">0</span></div>
       <div class="pp-a">
         <button class="b" id="btnImp2" style="font-size:11px">+ Import</button>
+        <button class="b" id="btnPalLoad" style="font-size:11px">Load Pal .mem</button>
         <button class="b" id="btnBlank" style="font-size:11px">+ Blank</button>
+        <button class="b" id="btnTileLeft" style="font-size:11px">← Move</button>
+        <button class="b" id="btnTileRight" style="font-size:11px">Move →</button>
         <button class="b" id="btnClear" style="font-size:11px">Clear</button>
       </div>
       <div class="pp-gw"><div class="pp-g" id="pG"></div></div>
@@ -235,6 +239,22 @@ input[type="file"]{display:none}
   </div>
 </div>
 
+<!-- ========== PALETTE EXPORT PREVIEW ========== -->
+<div class="mbg" id="palM">
+  <div class="mdl" style="min-width:720px;max-width:90vw">
+    <h2>Palette .mem Preview</h2>
+    <div style="font-size:11px;color:var(--td);margin-bottom:10px">Final export IDs. `00` stays blank. `01` is the first real tile.</div>
+    <div style="font-size:11px;color:var(--td);margin-bottom:12px" id="palMeta">—</div>
+    <div style="max-height:60vh;overflow:auto;border:1px solid var(--bdr);background:var(--bg0);padding:10px;border-radius:6px">
+      <div id="palPreviewGrid" style="display:grid;gap:8px"></div>
+    </div>
+    <div class="mbt">
+      <button class="b" id="palCancel">Cancel</button>
+      <button class="b pri" id="palExport">Export palette.mem</button>
+    </div>
+  </div>
+</div>
+
 <!-- ========== NEW LEVEL MODAL ========== -->
 <div class="mbg" id="nlM">
   <div class="mdl">
@@ -257,7 +277,7 @@ input[type="file"]{display:none}
 
 // ===== DOM refs =====
 const $=id=>document.getElementById(id);
-const fImp=$('fImp'), fLoad=$('fLoad');
+const fImp=$('fImp'), fLoad=$('fLoad'), fPalLoad=$('fPalLoad');
 const teEl=$('TE'), teImgEl=$('teImg'), teOC=$('teOC');
 const teCols=$('teCols'), teRows=$('teRows'), teTW=$('teTW'), teTH=$('teTH'), teZoom=$('teZ');
 
@@ -304,7 +324,10 @@ $('btnResize').onclick=()=>openLevelModal('resize');
 $('btnImp').onclick=()=>fImp.click();
 $('btnImp2').onclick=()=>fImp.click();
 $('btnLoad').onclick=()=>fLoad.click();
+$('btnPalLoad').onclick=()=>fPalLoad.click();
 $('btnBlank').onclick=addBlank;
+$('btnTileLeft').onclick=()=>moveSelectedTile(-1);
+$('btnTileRight').onclick=()=>moveSelectedTile(1);
 $('btnClear').onclick=clearAll;
 $('tPaint').onclick=()=>setTool('paint');
 $('tErase').onclick=()=>setTool('erase');
@@ -312,12 +335,14 @@ $('tFill').onclick=()=>setTool('fill');
 $('tPick').onclick=()=>setTool('pick');
 $('xTxt').onclick=()=>xport('txt');
 $('xMem').onclick=()=>xport('mem');
-$('xPalMem').onclick=exportPaletteMem;
+$('xPalMem').onclick=openPaletteExportPreview;
 $('xJson').onclick=()=>xport('json');
 $('mCancel').onclick=()=>$('nlM').classList.remove('vis');
 $('mCreate').onclick=newLevel;
 $('teOK').onclick=teConfirm;
 $('teNo').onclick=()=>teEl.classList.remove('vis');
+$('palCancel').onclick=()=>$('palM').classList.remove('vis');
+$('palExport').onclick=()=>{exportPaletteMem();$('palM').classList.remove('vis')};
 
 // Tileset editor inputs
 teCols.addEventListener('input',teFromCR);
@@ -357,6 +382,12 @@ fLoad.addEventListener('change',function(e){
   const f=e.target.files&&e.target.files[0];if(!f)return;
   doLoadLevel(f);
   fLoad.value='';
+});
+
+fPalLoad.addEventListener('change',function(e){
+  const f=e.target.files&&e.target.files[0];if(!f)return;
+  importPaletteMem(f);
+  fPalLoad.value='';
 });
 
 // ===========================
@@ -535,6 +566,21 @@ function addBlank(){
   const c=document.createElement('canvas');c.width=S.ptw;c.height=S.pth;
   const x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,S.ptw,S.pth);
   S.tiles.push({canvas:c});rebuildPal();
+}
+
+function moveSelectedTile(dir){
+  if(S.sel<=0)return;
+  const next=S.sel+dir;
+  if(next<=0||next>=S.tiles.length)return;
+  const tmp=S.tiles[S.sel];
+  S.tiles[S.sel]=S.tiles[next];
+  S.tiles[next]=tmp;
+  for(let i=0;i<S.data.length;i++){
+    if(S.data[i]===S.sel)S.data[i]=next;
+    else if(S.data[i]===next)S.data[i]=S.sel;
+  }
+  S.sel=next;
+  rebuildPal();render();updDP();
 }
 
 function clearAll(){
@@ -736,6 +782,46 @@ function xport(fmt){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fn;a.click();URL.revokeObjectURL(a.href);
 }
 
+function openPaletteExportPreview(){
+  if(!S.tiles.length){alert('No palette tiles to export.');return}
+  const cols=16;
+  const rows=Math.max(1,Math.ceil(S.tiles.length/cols));
+  $('palMeta').textContent='Tiles: '+S.tiles.length+' | Grid: '+cols+'×'+rows+' | Tile: '+S.ptw+'×'+S.pth;
+  const g=$('palPreviewGrid');
+  g.innerHTML='';
+  g.style.gridTemplateColumns='repeat('+cols+', minmax(36px, 1fr))';
+  for(let i=0;i<S.tiles.length;i++){
+    const el=document.createElement('div');
+    el.style.border='1px solid var(--bdr)';
+    el.style.background='var(--bg1)';
+    el.style.borderRadius='6px';
+    el.style.padding='6px';
+    el.style.aspectRatio=S.ptw+'/'+S.pth;
+    el.style.display='flex';
+    el.style.flexDirection='column';
+    el.style.alignItems='center';
+    el.style.justifyContent='center';
+    el.style.gap='4px';
+
+    const c=document.createElement('canvas');
+    c.width=S.ptw;c.height=S.pth;
+    c.style.width='100%';
+    c.style.height='auto';
+    c.style.imageRendering='pixelated';
+    c.getContext('2d').drawImage(S.tiles[i].canvas,0,0);
+    el.appendChild(c);
+
+    const lb=document.createElement('div');
+    lb.style.fontFamily='"JetBrains Mono", monospace';
+    lb.style.fontSize='10px';
+    lb.style.color='var(--tb)';
+    lb.textContent=hex2(i&0xFF);
+    el.appendChild(lb);
+    g.appendChild(el);
+  }
+  $('palM').classList.add('vis');
+}
+
 function exportPaletteMem(){
   if(!S.tiles.length){alert('No palette tiles to export.');return}
 
@@ -771,6 +857,66 @@ function exportPaletteMem(){
   a.download='palette.mem';
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+function importPaletteMem(f){
+  f.text().then(t=>{
+    const raw=t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    const vals=raw.filter(s=>!/^(;|\/\/)/.test(s));
+    if(!vals.length){alert('Palette .mem is empty.');return}
+
+    const cols=16;
+    const pixelsPerRow=cols*S.ptw;
+    const tilePixels=S.ptw*S.pth;
+    const rowPixels=pixelsPerRow*S.pth;
+    if(vals.length%rowPixels!==0){
+      alert('Palette .mem does not match the current palette tile size '+S.ptw+'x'+S.pth+'.');
+      return;
+    }
+
+    const rows=vals.length/rowPixels;
+    const totalTiles=cols*rows;
+    const atlas=document.createElement('canvas');
+    atlas.width=pixelsPerRow;
+    atlas.height=rows*S.pth;
+    const ctx=atlas.getContext('2d');
+    const img=ctx.createImageData(atlas.width,atlas.height);
+
+    for(let i=0;i<vals.length;i++){
+      const v=vals[i].replace(/^0x/i,'').padStart(3,'0').slice(-3);
+      const n=parseInt(v,16);
+      const p=i*4;
+      img.data[p]=((n>>8)&0xF)*17;
+      img.data[p+1]=((n>>4)&0xF)*17;
+      img.data[p+2]=(n&0xF)*17;
+      img.data[p+3]=255;
+    }
+    ctx.putImageData(img,0,0);
+
+    let lastNonBlank=0;
+    for(let tile=1;tile<totalTiles;tile++){
+      const col=tile%cols;
+      const row=Math.floor(tile/cols);
+      const data=ctx.getImageData(col*S.ptw,row*S.pth,S.ptw,S.pth).data;
+      let blank=true;
+      for(let p=0;p<data.length;p+=4){
+        if(!(data[p]===255&&data[p+1]===255&&data[p+2]===255)){blank=false;break}
+      }
+      if(!blank)lastNonBlank=tile;
+    }
+
+    S.tiles=[{canvas:checker(S.ptw,S.pth)}];
+    for(let tile=1;tile<=lastNonBlank;tile++){
+      const col=tile%cols;
+      const row=Math.floor(tile/cols);
+      const tc=document.createElement('canvas');
+      tc.width=S.ptw;tc.height=S.pth;
+      tc.getContext('2d').drawImage(atlas,col*S.ptw,row*S.pth,S.ptw,S.pth,0,0,S.ptw,S.pth);
+      S.tiles.push({canvas:tc});
+    }
+    if(S.sel>=S.tiles.length)S.sel=0;
+    rebuildPal();render();updDP();
+  });
 }
 
 // ===== IMPORT LEVEL =====
