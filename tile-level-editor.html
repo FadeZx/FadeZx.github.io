@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>W2 Tile Level Designer</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Chakra+Petch:wght@400;600;700&display=swap');
+:root {
+  --bg0:#0a0c10; --bg1:#12151c; --bg2:#181c26; --bgH:#1e2333;
+  --bdr:#2a3042; --acc:#4a7cff; --accG:#4a7cff44;
+  --t:#c8cdd8; --td:#6b7280; --tb:#e8ecf4;
+  --grn:#34d399; --red:#f87171;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg0);color:var(--t);font-family:'Chakra Petch',sans-serif;height:100vh;overflow:hidden}
+input[type="file"]{display:none}
+
+/* Buttons */
+.b{background:transparent;border:1px solid var(--bdr);color:var(--td);font-family:'Chakra Petch',sans-serif;font-size:12px;padding:5px 12px;border-radius:4px;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.b:hover{background:var(--bgH);color:var(--tb)}
+.b.on,.b.pri{background:var(--acc);color:#fff;border-color:var(--acc)}
+.b.ok{background:var(--grn);color:#000;border-color:var(--grn);font-weight:600}
+.b.no{background:var(--red);color:#000;border-color:var(--red)}
+
+/* Number inputs - scoped class */
+.ni{background:var(--bg0);border:1px solid var(--bdr);color:var(--tb);font-family:'JetBrains Mono',monospace;font-size:12px;padding:4px 6px;border-radius:4px;width:60px;text-align:center}
+.ni:focus{outline:none;border-color:var(--acc)}
+
+.lb{font-size:10px;color:var(--td);text-transform:uppercase;letter-spacing:1px}
+
+/* ==========================================
+   TILESET EDITOR - fullscreen overlay
+   ========================================== */
+#TE{position:fixed;inset:0;z-index:500;background:var(--bg0);flex-direction:column;display:none}
+#TE.vis{display:flex}
+
+.te-bar{background:var(--bg1);border-bottom:1px solid var(--bdr);padding:0 20px;height:52px;display:flex;align-items:center;gap:16px;flex-shrink:0}
+.te-bar h1{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:var(--acc);letter-spacing:2px;text-transform:uppercase;margin-right:20px}
+.te-cg{display:flex;align-items:center;gap:6px;padding:0 12px;border-left:1px solid var(--bdr);height:36px}
+
+.te-inf{background:var(--bg2);border-bottom:1px solid var(--bdr);padding:6px 20px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--td);display:flex;gap:24px;flex-shrink:0}
+.te-inf strong{color:var(--tb)}
+
+.te-bd{display:flex;flex:1;overflow:hidden}
+
+.te-cv{flex:1;overflow:auto;display:flex;align-items:flex-start;justify-content:center;padding:20px;background:repeating-conic-gradient(#15181f 0% 25%,#1a1e28 0% 50%) 0 0/20px 20px}
+.te-wr{position:relative;display:inline-block;box-shadow:0 0 40px #0008}
+.te-wr img{display:block;image-rendering:pixelated;max-width:none}
+.te-ov{position:absolute;inset:0;pointer-events:none}
+.te-ov canvas{position:absolute;top:0;left:0;width:100%;height:100%}
+
+.te-rp{width:320px;min-width:320px;background:var(--bg1);border-left:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
+.te-rh{padding:12px 16px;border-bottom:1px solid var(--bdr);font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--td);display:flex;justify-content:space-between}
+.te-rh .ct{color:var(--acc)}
+.te-pw{flex:1;overflow-y:auto;padding:8px}
+.te-pg{display:grid;gap:3px}
+.te-pt{background:var(--bg0);border:1px solid var(--bdr);border-radius:2px;position:relative;overflow:hidden}
+.te-pt canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
+.te-pt .tid{position:absolute;bottom:1px;right:2px;font-family:'JetBrains Mono',monospace;font-size:7px;color:#fff;background:#000a;padding:0 3px;border-radius:2px}
+
+/* ==========================================
+   LEVEL EDITOR - main page
+   ========================================== */
+#LE{display:flex;flex-direction:column;height:100vh}
+
+.top{background:var(--bg1);border-bottom:1px solid var(--bdr);padding:0 12px;height:46px;display:flex;align-items:center;gap:8px;flex-shrink:0;z-index:100;overflow-x:auto}
+.top .logo{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;color:var(--acc);letter-spacing:2px;text-transform:uppercase;margin-right:12px;white-space:nowrap}
+.top .logo span{color:var(--td);font-weight:400}
+.tg{display:flex;align-items:center;gap:4px;padding:0 8px;border-left:1px solid var(--bdr);height:30px}
+
+.ma{display:flex;flex:1;overflow:hidden}
+
+/* Palette */
+.pp{width:260px;min-width:260px;background:var(--bg1);border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
+.pp-h{padding:8px 12px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--td)}
+.pp-a{display:flex;gap:4px;padding:6px 10px;border-bottom:1px solid var(--bdr)}
+.pp-gw{flex:1;overflow-y:auto;padding:6px}
+.pp-g{display:grid;gap:2px}
+.pt{border:2px solid transparent;cursor:pointer;position:relative;background:var(--bg0);transition:border-color .1s}
+.pt:hover{border-color:var(--td)}
+.pt.sel{border-color:var(--acc);box-shadow:0 0 6px var(--accG)}
+.pt canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
+.pt .tid{position:absolute;bottom:1px;right:2px;font-family:'JetBrains Mono',monospace;font-size:7px;color:#fff;background:#000a;padding:0 2px;border-radius:2px;pointer-events:none}
+
+/* Canvas */
+.ca{flex:1;position:relative;overflow:hidden;background:var(--bg0);cursor:crosshair}
+.ca canvas{position:absolute;top:0;left:0;image-rendering:pixelated}
+.zi{position:absolute;bottom:8px;right:8px;background:var(--bg2);border:1px solid var(--bdr);border-radius:4px;padding:2px 8px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--td);z-index:10;pointer-events:none}
+
+/* Info panel */
+.ip{width:240px;min-width:240px;background:var(--bg1);border-left:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
+.is{padding:8px 12px;border-bottom:1px solid var(--bdr)}
+.is h3{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--td);margin-bottom:6px}
+.ir{display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px}
+.ir .l{color:var(--td)} .ir .v{font-family:'JetBrains Mono',monospace;color:var(--tb);font-size:11px}
+.sp{display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg0);border-radius:6px;margin-top:4px}
+.sp canvas{image-rendering:pixelated;border:1px solid var(--bdr)}
+.sh{font-family:'JetBrains Mono',monospace;color:var(--acc);font-size:14px;font-weight:700}
+.sn{font-family:'JetBrains Mono',monospace;color:var(--td);font-size:10px;margin-top:2px}
+.dpw{flex:1;overflow:auto;padding:8px}
+.dpw pre{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--td);line-height:1.5;white-space:pre}
+
+.sb{background:var(--bg1);border-top:1px solid var(--bdr);padding:0 12px;height:24px;display:flex;align-items:center;gap:16px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--td);flex-shrink:0}
+
+/* Modal */
+.mbg{display:none;position:fixed;inset:0;background:#000b;z-index:600;align-items:center;justify-content:center}
+.mbg.vis{display:flex}
+.mdl{background:var(--bg1);border:1px solid var(--bdr);border-radius:8px;padding:20px;min-width:320px}
+.mdl h2{font-size:15px;color:var(--tb);margin-bottom:14px}
+.mdl label{display:block;font-size:10px;color:var(--td);text-transform:uppercase;letter-spacing:1px;margin:10px 0 4px}
+.mdl input[type="number"]{width:100%;background:var(--bg0);border:1px solid var(--bdr);color:var(--tb);font-family:'JetBrains Mono',monospace;font-size:12px;padding:5px 8px;border-radius:4px}
+.mdl input[type="number"]:focus{outline:none;border-color:var(--acc)}
+.mbt{display:flex;gap:8px;margin-top:16px;justify-content:flex-end}
+
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bdr);border-radius:3px}
+</style>
+</head>
+<body>
+
+<!-- File inputs at body level so they always work -->
+<input type="file" id="fImp" accept="image/*">
+<input type="file" id="fLoad" accept=".txt,.mem,.json">
+
+<!-- ========== TILESET EDITOR OVERLAY ========== -->
+<div id="TE">
+  <div class="te-bar">
+    <h1>✂ Tileset Cutter</h1>
+    <div class="te-cg">
+      <span class="lb">Cols</span>
+      <input class="ni" id="teCols" type="number" value="4" min="1" max="512">
+      <span class="lb">Rows</span>
+      <input class="ni" id="teRows" type="number" value="4" min="1" max="512">
+    </div>
+    <div class="te-cg">
+      <span class="lb">Tile W</span>
+      <input class="ni" id="teTW" type="number" value="32" min="1">
+      <span class="lb">H</span>
+      <input class="ni" id="teTH" type="number" value="32" min="1">
+    </div>
+    <div class="te-cg">
+      <span class="lb">Zoom</span>
+      <input class="ni" id="teZ" type="number" value="2" min="1" max="10" step="1">
+    </div>
+    <div style="flex:1"></div>
+    <button class="b ok" id="teOK">✓ Confirm &amp; Use Tiles</button>
+    <button class="b no" id="teNo">✕ Cancel</button>
+  </div>
+  <div class="te-inf">
+    <span>Image: <strong id="teIS">—</strong></span>
+    <span>Cell: <strong id="teCS">—</strong></span>
+    <span>Tiles: <strong id="teTT">—</strong></span>
+  </div>
+  <div class="te-bd">
+    <div class="te-cv">
+      <div class="te-wr" id="teWr">
+        <img id="teImg">
+        <div class="te-ov"><canvas id="teOC"></canvas></div>
+      </div>
+    </div>
+    <div class="te-rp">
+      <div class="te-rh">Cut Preview <span class="ct" id="tePC">0 tiles</span></div>
+      <div class="te-pw"><div class="te-pg" id="tePG"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== LEVEL EDITOR ========== -->
+<div id="LE">
+  <div class="top">
+    <div class="logo">W2TILE <span>Level Designer</span></div>
+    <div class="tg">
+      <button class="b" id="btnNew">+ New</button>
+      <button class="b" id="btnResize">Resize</button>
+      <button class="b" id="btnImp">⬆ Import Tileset</button>
+    </div>
+    <div class="tg">
+      <button class="b on" id="tPaint">🖌 Paint</button>
+      <button class="b" id="tErase">⌫ Erase</button>
+      <button class="b" id="tFill">🪣 Fill</button>
+      <button class="b" id="tPick">💉 Pick</button>
+    </div>
+    <div class="tg">
+      <button class="b" id="xTxt">📄 .txt</button>
+      <button class="b" id="xMem">💾 .mem</button>
+      <button class="b" id="xPalMem">Pal .mem</button>
+      <button class="b" id="xJson">{ } .json</button>
+      <button class="b" id="btnLoad">📂 Load</button>
+    </div>
+  </div>
+  <div class="ma">
+    <div class="pp">
+      <div class="pp-h">Tile Palette <span id="pCt" style="color:var(--acc)">0</span></div>
+      <div class="pp-a">
+        <button class="b" id="btnImp2" style="font-size:11px">+ Import</button>
+        <button class="b" id="btnBlank" style="font-size:11px">+ Blank</button>
+        <button class="b" id="btnClear" style="font-size:11px">Clear</button>
+      </div>
+      <div class="pp-gw"><div class="pp-g" id="pG"></div></div>
+    </div>
+    <div class="ca" id="cvA">
+      <canvas id="lc"></canvas>
+      <div class="zi" id="zI">100%</div>
+    </div>
+    <div class="ip">
+      <div class="is"><h3>Level</h3>
+        <div class="ir"><span class="l">Grid</span><span class="v" id="nG">20×15</span></div>
+        <div class="ir"><span class="l">Tile</span><span class="v" id="nT">32×32</span></div>
+        <div class="ir"><span class="l">Pixels</span><span class="v" id="nP">640×480</span></div>
+      </div>
+      <div class="is"><h3>Cursor</h3>
+        <div class="ir"><span class="l">Pos</span><span class="v" id="nCP">—</span></div>
+        <div class="ir"><span class="l">Code</span><span class="v" id="nCC">—</span></div>
+      </div>
+      <div class="is"><h3>Selected</h3>
+        <div class="sp">
+          <canvas id="sC" width="48" height="48"></canvas>
+          <div><div class="sh" id="sH">0x0000</div><div class="sn" id="sN">Empty</div></div>
+        </div>
+      </div>
+      <div class="is" style="flex-shrink:0"><h3>Hex Data</h3></div>
+      <div class="dpw"><pre id="dP">—</pre></div>
+    </div>
+  </div>
+  <div class="sb">
+    <span id="sT">Tool: Paint</span>
+    <span style="color:var(--bdr)">|</span>
+    <span id="sCo">—</span>
+    <span style="color:var(--bdr)">|</span>
+    <span id="sZ">100%</span>
+    <span style="color:var(--bdr)">|</span>
+    <span>Scroll=Pan  Ctrl+Scroll=Zoom  B/E/F/I=Tools  Ctrl+Z=Undo  RClick=Pick</span>
+  </div>
+</div>
+
+<!-- ========== NEW LEVEL MODAL ========== -->
+<div class="mbg" id="nlM">
+  <div class="mdl">
+    <h2 id="mTitle">New Level</h2>
+    <label>Level Width (tiles)</label><input id="mW" type="number" value="20" min="1" max="2048">
+    <label>Level Height (tiles)</label><input id="mH" type="number" value="15" min="1" max="2048">
+    <label>Tile Width (px)</label><input id="mTW" type="number" value="32" min="1" max="512">
+    <label>Tile Height (px)</label><input id="mTH" type="number" value="32" min="1" max="512">
+    <div style="font-size:10px;color:var(--td);margin-top:6px;font-style:italic">Any tile size, e.g. 50×200</div>
+    <div class="mbt">
+      <button class="b" id="mCancel">Cancel</button>
+      <button class="b pri" id="mCreate">Create</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+// ===== DOM refs =====
+const $=id=>document.getElementById(id);
+const fImp=$('fImp'), fLoad=$('fLoad');
+const teEl=$('TE'), teImgEl=$('teImg'), teOC=$('teOC');
+const teCols=$('teCols'), teRows=$('teRows'), teTW=$('teTW'), teTH=$('teTH'), teZoom=$('teZ');
+
+// ===== STATE =====
+const S={tw:32,th:32,ptw:32,pth:32,lw:20,lh:15,tool:'paint',sel:0,zoom:1,px:20,py:20,panning:false,painting:false,lp:null,tiles:[],data:null,undo:[],redo:[]};
+let tsImg=null, cutBuf=[], levelModalMode='new';
+
+// ===== HELPERS =====
+function hex2(n){return n.toString(16).toUpperCase().padStart(2,'0')}
+function hex4(n){return n.toString(16).toUpperCase().padStart(4,'0')}
+function clampInt(v,fallback,min,max){
+  const n=parseInt(v,10);
+  if(Number.isNaN(n))return fallback;
+  return Math.max(min,Math.min(max,n));
+}
+function checker(w,h){
+  const c=document.createElement('canvas');c.width=w;c.height=h;
+  const x=c.getContext('2d'),s=Math.max(2,Math.min(w,h)/4);
+  for(let y=0;y<h;y+=s)for(let i=0;i<w;i+=s){x.fillStyle=((i/s+y/s)%2===0)?'#1a1e2a':'#22273a';x.fillRect(i,y,s,s);}
+  return c;
+}
+function fitTileCanvas(src,w,h){
+  const c=document.createElement('canvas');c.width=w;c.height=h;
+  const x=c.getContext('2d');
+  x.imageSmoothingEnabled=false;
+  if(src)x.drawImage(src,0,0,w,h);
+  return c;
+}
+function rgb444Hex(r,g,b){
+  return ((r>>4)<<8 | (g>>4)<<4 | (b>>4)).toString(16).toUpperCase().padStart(3,'0');
+}
+
+// ===== CANVAS REFS (must be before init) =====
+const lc=$('lc'), lx=lc.getContext('2d');
+
+// ===== INIT =====
+S.data=new Uint16Array(S.lw*S.lh);
+S.tiles=[{canvas:checker(S.ptw,S.pth)}];
+rebuildPal(); updInfo(); setupCV(); render(); updDP();
+
+// ===== WIRE BUTTONS =====
+$('btnNew').onclick=()=>openLevelModal('new');
+$('btnResize').onclick=()=>openLevelModal('resize');
+$('btnImp').onclick=()=>fImp.click();
+$('btnImp2').onclick=()=>fImp.click();
+$('btnLoad').onclick=()=>fLoad.click();
+$('btnBlank').onclick=addBlank;
+$('btnClear').onclick=clearAll;
+$('tPaint').onclick=()=>setTool('paint');
+$('tErase').onclick=()=>setTool('erase');
+$('tFill').onclick=()=>setTool('fill');
+$('tPick').onclick=()=>setTool('pick');
+$('xTxt').onclick=()=>xport('txt');
+$('xMem').onclick=()=>xport('mem');
+$('xPalMem').onclick=exportPaletteMem;
+$('xJson').onclick=()=>xport('json');
+$('mCancel').onclick=()=>$('nlM').classList.remove('vis');
+$('mCreate').onclick=newLevel;
+$('teOK').onclick=teConfirm;
+$('teNo').onclick=()=>teEl.classList.remove('vis');
+
+// Tileset editor inputs
+teCols.addEventListener('input',teFromCR);
+teRows.addEventListener('input',teFromCR);
+teTW.addEventListener('input',teFromWH);
+teTH.addEventListener('input',teFromWH);
+teZoom.addEventListener('input',teRedraw);
+
+// File inputs
+fImp.addEventListener('change',function(e){
+  const f=e.target.files&&e.target.files[0];
+  if(!f)return;
+  console.log('[Import] File selected:',f.name,f.type,f.size);
+  const reader=new FileReader();
+  reader.onload=function(ev){
+    console.log('[Import] FileReader done, creating Image');
+    const img=new Image();
+    img.onload=function(){
+      console.log('[Import] Image loaded:',img.width,'x',img.height);
+      tsImg=img;
+      openTE(img);
+    };
+    img.onerror=function(err){
+      console.error('[Import] Image load error',err);
+      alert('Failed to load image');
+    };
+    img.src=ev.target.result;
+  };
+  reader.onerror=function(err){
+    console.error('[Import] FileReader error',err);
+  };
+  reader.readAsDataURL(f);
+  fImp.value='';
+});
+
+fLoad.addEventListener('change',function(e){
+  const f=e.target.files&&e.target.files[0];if(!f)return;
+  doLoadLevel(f);
+  fLoad.value='';
+});
+
+// ===========================
+// TILESET EDITOR
+// ===========================
+function openTE(img){
+  console.log('[TE] Opening tileset editor');
+  // Show editor
+  teEl.classList.add('vis');
+
+  // Show image
+  teImgEl.src=img.src;
+
+  // Auto-detect cols/rows
+  let c=Math.max(1,Math.round(img.width/S.ptw));
+  let r=Math.max(1,Math.round(img.height/S.pth));
+  if(c>256)c=8;if(r>256)r=8;
+  teCols.value=c; teRows.value=r;
+  teFromCR();
+}
+
+function teFromCR(){
+  if(!tsImg)return;
+  const c=Math.max(1,parseInt(teCols.value)||1);
+  const r=Math.max(1,parseInt(teRows.value)||1);
+  teTW.value=Math.floor(tsImg.width/c);
+  teTH.value=Math.floor(tsImg.height/r);
+  teRedraw();
+}
+
+function teFromWH(){
+  if(!tsImg)return;
+  const tw=Math.max(1,parseInt(teTW.value)||1);
+  const th=Math.max(1,parseInt(teTH.value)||1);
+  teCols.value=Math.max(1,Math.floor(tsImg.width/tw));
+  teRows.value=Math.max(1,Math.floor(tsImg.height/th));
+  teRedraw();
+}
+
+function teRedraw(){
+  if(!tsImg)return;
+  const cols=Math.max(1,parseInt(teCols.value)||1);
+  const rows=Math.max(1,parseInt(teRows.value)||1);
+  const tw=Math.max(1,parseInt(teTW.value)||1);
+  const th=Math.max(1,parseInt(teTH.value)||1);
+  const z=Math.max(1,parseInt(teZoom.value)||2);
+
+  // Info bar
+  $('teIS').textContent=tsImg.width+'×'+tsImg.height;
+  $('teCS').textContent=tw+'×'+th;
+  $('teTT').textContent=cols*rows;
+
+  // Size image
+  teImgEl.style.width=(tsImg.width*z)+'px';
+  teImgEl.style.height=(tsImg.height*z)+'px';
+
+  // Grid overlay canvas
+  const oc=teOC;
+  oc.width=tsImg.width*z;
+  oc.height=tsImg.height*z;
+  const ctx=oc.getContext('2d');
+  ctx.clearRect(0,0,oc.width,oc.height);
+
+  // Red grid lines
+  ctx.strokeStyle='rgba(255,68,68,0.55)';
+  ctx.lineWidth=1;
+  for(let i=0;i<=cols;i++){
+    const x=Math.round(i*tw*z)+0.5;
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,oc.height);ctx.stroke();
+  }
+  for(let i=0;i<=rows;i++){
+    const y=Math.round(i*th*z)+0.5;
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(oc.width,y);ctx.stroke();
+  }
+
+  // Cell hex IDs
+  const fs=Math.max(8,Math.min(14,tw*z*0.18));
+  ctx.font='bold '+fs+'px "JetBrains Mono",monospace';
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+    const idx=r*cols+c+1;
+    const cx=(c*tw+tw/2)*z, cy=(r*th+th/2)*z;
+    const pw=fs*2.8, ph=fs*1.4;
+    ctx.fillStyle='rgba(0,0,0,0.7)';
+    ctx.fillRect(cx-pw/2,cy-ph/2,pw,ph);
+    ctx.fillStyle='rgba(74,124,255,0.85)';
+    ctx.fillText(hex4(idx),cx,cy);
+  }
+
+  // Cut preview
+  cutBuf=[];
+  const pg=$('tePG');
+  pg.innerHTML='';
+  const pcols=Math.max(2,Math.min(cols,Math.floor(300/Math.max(24,260/cols))));
+  pg.style.gridTemplateColumns='repeat('+pcols+',1fr)';
+
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+    const tc=document.createElement('canvas');
+    tc.width=tw;tc.height=th;
+    tc.getContext('2d').drawImage(tsImg,c*tw,r*th,tw,th,0,0,tw,th);
+    cutBuf.push(tc);
+
+    const el=document.createElement('div');
+    el.className='te-pt';
+    el.style.aspectRatio=tw+'/'+th;
+    const dc=document.createElement('canvas');
+    dc.width=tw;dc.height=th;
+    dc.getContext('2d').drawImage(tc,0,0);
+    el.appendChild(dc);
+    const lb=document.createElement('div');
+    lb.className='tid';
+    lb.textContent=hex4(r*cols+c+1);
+    el.appendChild(lb);
+    pg.appendChild(el);
+  }
+  $('tePC').textContent=cutBuf.length+' tiles';
+}
+
+function teConfirm(){
+  if(!cutBuf.length)return;
+  S.ptw=Math.max(1,parseInt(teTW.value)||32);
+  S.pth=Math.max(1,parseInt(teTH.value)||32);
+  S.tiles=[{canvas:checker(S.ptw,S.pth)}];
+  cutBuf.forEach(c=>S.tiles.push({canvas:c}));
+  S.sel=0;
+  rebuildPal();updInfo();render();updDP();
+  teEl.classList.remove('vis');
+}
+
+// ===========================
+// PALETTE
+// ===========================
+function rebuildPal(){
+  const g=$('pG');g.innerHTML='';
+  const ar=S.ptw/S.pth;
+  const dw=Math.max(28,Math.min(60,48*ar));
+  const cols=Math.max(1,Math.floor(246/(dw+4)));
+  g.style.gridTemplateColumns='repeat('+cols+',1fr)';
+  S.tiles.forEach((t,i)=>{
+    const el=document.createElement('div');
+    el.className='pt'+(i===S.sel?' sel':'');
+    el.style.aspectRatio=S.ptw+'/'+S.pth;
+    el.addEventListener('click',()=>selTile(i));
+    const c=document.createElement('canvas');
+    c.width=S.ptw;c.height=S.pth;
+    c.getContext('2d').drawImage(t.canvas,0,0);
+    el.appendChild(c);
+    const lb=document.createElement('div');
+    lb.className='tid';lb.textContent=hex4(i);
+    el.appendChild(lb);
+    g.appendChild(el);
+  });
+  $('pCt').textContent=S.tiles.length;
+  updSel();
+}
+
+function selTile(i){
+  S.sel=i;
+  document.querySelectorAll('.pt').forEach((e,idx)=>e.classList.toggle('sel',idx===i));
+  updSel();
+}
+
+function updSel(){
+  const c=$('sC');c.width=48;c.height=48;
+  const ctx=c.getContext('2d');ctx.imageSmoothingEnabled=false;
+  ctx.clearRect(0,0,48,48);
+  if(S.tiles[S.sel]){
+    const sc=Math.min(48/S.ptw,48/S.pth),w=S.ptw*sc,h=S.pth*sc;
+    ctx.drawImage(S.tiles[S.sel].canvas,(48-w)/2,(48-h)/2,w,h);
+  }
+  $('sH').textContent='0x'+hex2(S.sel&0xFF);
+  $('sN').textContent=S.sel===0?'Empty':'Tile #'+S.sel;
+}
+
+function addBlank(){
+  const c=document.createElement('canvas');c.width=S.ptw;c.height=S.pth;
+  const x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,S.ptw,S.pth);
+  S.tiles.push({canvas:c});rebuildPal();
+}
+
+function clearAll(){
+  tsImg=null;cutBuf=[];
+  S.tiles=[{canvas:checker(S.ptw,S.pth)}];S.sel=0;
+  S.data.fill(0);rebuildPal();render();updDP();
+}
+
+// ===========================
+// LEVEL CANVAS
+// ===========================
+
+function setupCV(){
+  rsz();
+  window.addEventListener('resize',()=>{rsz();render()});
+  const a=$('cvA');
+  a.addEventListener('mousedown',mD);
+  a.addEventListener('mousemove',mM);
+  a.addEventListener('mouseup',mU);
+  a.addEventListener('mouseleave',mU);
+  a.addEventListener('wheel',mW,{passive:false});
+  a.addEventListener('contextmenu',e=>e.preventDefault());
+  document.addEventListener('keydown',kD);
+}
+
+function rsz(){const a=$('cvA');lc.width=a.clientWidth;lc.height=a.clientHeight;}
+
+function render(){
+  lx.imageSmoothingEnabled=false;
+  lx.clearRect(0,0,lc.width,lc.height);
+  lx.save();lx.translate(S.px,S.py);lx.scale(S.zoom,S.zoom);
+  for(let y=0;y<S.lh;y++)for(let x=0;x<S.lw;x++){
+    const tid=S.data[y*S.lw+x],px=x*S.tw,py=y*S.th;
+    if(tid>0&&tid<S.tiles.length){
+      lx.drawImage(S.tiles[tid].canvas,px,py,S.tw,S.th);
+    }else{
+      lx.fillStyle='#111319';lx.fillRect(px,py,S.tw,S.th);
+      lx.fillStyle='#181c24';
+      const hs=S.tw/2;lx.fillRect(px,py,hs,hs);lx.fillRect(px+hs,py+hs,hs,hs);
+    }
+  }
+  lx.strokeStyle='rgba(255,255,255,0.05)';lx.lineWidth=0.5;
+  for(let x=0;x<=S.lw;x++){lx.beginPath();lx.moveTo(x*S.tw,0);lx.lineTo(x*S.tw,S.lh*S.th);lx.stroke();}
+  for(let y=0;y<=S.lh;y++){lx.beginPath();lx.moveTo(0,y*S.th);lx.lineTo(S.lw*S.tw,y*S.th);lx.stroke();}
+  lx.strokeStyle='#4a7cff';lx.lineWidth=1.5;
+  lx.strokeRect(0,0,S.lw*S.tw,S.lh*S.th);
+  lx.restore();
+}
+
+// ===== MOUSE =====
+function s2g(mx,my){return{gx:Math.floor((mx-S.px)/S.zoom/S.tw),gy:Math.floor((my-S.py)/S.zoom/S.th)}}
+function ib(gx,gy){return gx>=0&&gy>=0&&gx<S.lw&&gy<S.lh}
+
+function mD(e){
+  const r=lc.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+  if(e.button===1||(e.button===0&&e.altKey)){S.panning=true;S.lp={x:e.clientX,y:e.clientY};lc.style.cursor='grabbing';return}
+  if(e.button===2){const{gx,gy}=s2g(mx,my);if(ib(gx,gy))selTile(S.data[gy*S.lw+gx]);return}
+  if(e.button===0){S.painting=true;pushU();doTool(mx,my)}
+}
+
+function mM(e){
+  const r=lc.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+  const{gx,gy}=s2g(mx,my);
+  $('nCP').textContent=gx+', '+gy;
+  $('sCo').textContent=gx+', '+gy;
+  if(ib(gx,gy))$('nCC').textContent='0x'+hex2(S.data[gy*S.lw+gx]&0xFF);
+  if(S.panning){S.px+=e.clientX-S.lp.x;S.py+=e.clientY-S.lp.y;S.lp={x:e.clientX,y:e.clientY};render();return}
+  if(S.painting)doTool(mx,my);
+}
+
+function mU(){if(S.panning){S.panning=false;lc.style.cursor='crosshair'}if(S.painting){S.painting=false;updDP()}}
+
+function mW(e){
+  e.preventDefault();
+  const r=lc.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+  if(e.ctrlKey||e.metaKey){
+    const oz=S.zoom;S.zoom=Math.max(0.1,Math.min(20,S.zoom*(e.deltaY>0?0.9:1.1)));
+    S.px=mx-(mx-S.px)*(S.zoom/oz);S.py=my-(my-S.py)*(S.zoom/oz);
+  }else{S.px-=e.deltaX||0;S.py-=e.deltaY||0}
+  const p=Math.round(S.zoom*100);
+  $('zI').textContent=p+'%';$('sZ').textContent=p+'%';
+  render();
+}
+
+// ===== TOOLS =====
+function setTool(t){
+  S.tool=t;
+  ['Paint','Erase','Fill','Pick'].forEach(n=>$(('t'+n)).classList.toggle('on',n.toLowerCase()===t));
+  $('sT').textContent='Tool: '+t[0].toUpperCase()+t.slice(1);
+}
+
+function doTool(mx,my){
+  const{gx,gy}=s2g(mx,my);if(!ib(gx,gy))return;
+  const i=gy*S.lw+gx;
+  if(S.tool==='paint')S.data[i]=S.sel;
+  else if(S.tool==='erase')S.data[i]=0;
+  else if(S.tool==='fill')ff(gx,gy,S.sel);
+  else if(S.tool==='pick')selTile(S.data[i]);
+  render();
+}
+
+function ff(sx,sy,nt){
+  const tgt=S.data[sy*S.lw+sx];if(tgt===nt)return;
+  const stk=[[sx,sy]],vis=new Set();
+  while(stk.length){
+    const[x,y]=stk.pop(),k=y*S.lw+x;
+    if(vis.has(k)||x<0||y<0||x>=S.lw||y>=S.lh)continue;
+    if(S.data[k]!==tgt)continue;
+    vis.add(k);S.data[k]=nt;
+    stk.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);
+  }
+}
+
+function pushU(){S.undo.push(new Uint16Array(S.data));if(S.undo.length>50)S.undo.shift();S.redo=[]}
+function undo(){if(!S.undo.length)return;S.redo.push(new Uint16Array(S.data));S.data=S.undo.pop();render();updDP()}
+function redo(){if(!S.redo.length)return;S.undo.push(new Uint16Array(S.data));S.data=S.redo.pop();render();updDP()}
+
+function kD(e){
+  if(e.target.tagName==='INPUT')return;
+  if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();e.shiftKey?redo():undo();return}
+  const k=e.key.toLowerCase();
+  if(k==='b')setTool('paint');else if(k==='e')setTool('erase');else if(k==='f')setTool('fill');else if(k==='i')setTool('pick');
+}
+
+// ===== INFO =====
+function updInfo(){
+  $('nG').textContent=S.lw+'×'+S.lh;
+  $('nT').textContent=S.tw+'×'+S.th;
+  $('nP').textContent=(S.lw*S.tw)+'×'+(S.lh*S.th);
+}
+
+function updDP(){
+  let t='';const mr=Math.min(S.lh,30),mc=Math.min(S.lw,14);
+  for(let y=0;y<mr;y++){
+    const r=[];for(let x=0;x<mc;x++)r.push(hex2(S.data[y*S.lw+x]&0xFF));
+    t+=r.join(' ');if(mc<S.lw)t+=' …';t+='\n';
+  }
+  if(mr<S.lh)t+='…\n';
+  $('dP').textContent=t||'—';
+}
+
+// ===== NEW LEVEL =====
+function openLevelModal(mode){
+  levelModalMode=mode;
+  $('mTitle').textContent=mode==='resize'?'Edit Level Size':'New Level';
+  $('mCreate').textContent=mode==='resize'?'Apply':'Create';
+  $('mW').value=S.lw;
+  $('mH').value=S.lh;
+  $('mTW').value=S.tw;
+  $('mTH').value=S.th;
+  $('nlM').classList.add('vis');
+}
+
+function newLevel(){
+  const lw=clampInt($('mW').value,S.lw,1,2048);
+  const lh=clampInt($('mH').value,S.lh,1,2048);
+  const tw=clampInt($('mTW').value,S.tw,1,512);
+  const th=clampInt($('mTH').value,S.th,1,512);
+  const nextData=new Uint16Array(lw*lh);
+
+  if(levelModalMode==='resize'&&S.data){
+    const copyW=Math.min(S.lw,lw),copyH=Math.min(S.lh,lh);
+    for(let y=0;y<copyH;y++)for(let x=0;x<copyW;x++)nextData[y*lw+x]=S.data[y*S.lw+x];
+  }
+
+  S.lw=lw;S.lh=lh;S.tw=tw;S.th=th;
+  S.data=nextData;
+  S.undo=[];S.redo=[];S.px=20;S.py=20;S.zoom=1;
+  if(levelModalMode==='resize'&&S.tiles.length){
+    if(S.sel>=S.tiles.length)S.sel=0;
+    rebuildPal();
+  }else if(tsImg){
+    openTE(tsImg);
+  }else{
+    S.tiles=[{canvas:checker(S.ptw,S.pth)}];
+    S.sel=0;
+    rebuildPal();
+  }
+  updInfo();$('nlM').classList.remove('vis');render();updDP();
+}
+
+// ===== EXPORT =====
+function xport(fmt){
+  let blob,fn;
+  if(fmt==='txt'){
+    let t='; W2 Tile Level\n; LEVEL_WIDTH='+S.lw+'\n; LEVEL_HEIGHT='+S.lh+'\n; TILE_WIDTH='+S.tw+'\n; TILE_HEIGHT='+S.th+'\n\n';
+    for(let y=0;y<S.lh;y++){const r=[];for(let x=0;x<S.lw;x++)r.push(hex4(S.data[y*S.lw+x]));t+=r.join(' ')+'\n'}
+    blob=new Blob([t],{type:'text/plain'});fn='level.txt';
+  }else if(fmt==='mem'){
+    for(let i=0;i<S.data.length;i++)if(S.data[i]>0xFF){alert('.mem export supports 2-digit tile values only (00-FF).');return}
+    let t='; W2 Tile Level MEM\n; LEVEL_WIDTH='+S.lw+'\n; LEVEL_HEIGHT='+S.lh+'\n; TILE_WIDTH='+S.tw+'\n; TILE_HEIGHT='+S.th+'\n\n';
+    for(let y=0;y<S.lh;y++){const r=[];for(let x=0;x<S.lw;x++)r.push(hex2(S.data[y*S.lw+x]));t+=r.join(' ')+'\n'}
+    blob=new Blob([t],{type:'text/plain'});fn='level.mem';
+  }else{
+    const o={version:1,levelWidth:S.lw,levelHeight:S.lh,tileWidth:S.tw,tileHeight:S.th,data:[]};
+    for(let y=0;y<S.lh;y++){const r=[];for(let x=0;x<S.lw;x++)r.push(S.data[y*S.lw+x]);o.data.push(r)}
+    blob=new Blob([JSON.stringify(o,null,2)],{type:'application/json'});fn='level.json';
+  }
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fn;a.click();URL.revokeObjectURL(a.href);
+}
+
+function exportPaletteMem(){
+  if(!S.tiles.length){alert('No palette tiles to export.');return}
+
+  const cols=16;
+  const rows=Math.max(1,Math.ceil(S.tiles.length/cols));
+  const atlas=document.createElement('canvas');
+  atlas.width=cols*S.ptw;
+  atlas.height=rows*S.pth;
+  const ctx=atlas.getContext('2d');
+  ctx.imageSmoothingEnabled=false;
+
+  // Tile 00 is reserved as blank in the renderer, so keep the first cell blank.
+  ctx.fillStyle='#FFFFFF';
+  ctx.fillRect(0,0,atlas.width,atlas.height);
+
+  for(let i=1;i<S.tiles.length;i++){
+    const tile=S.tiles[i];
+    const col=i%cols;
+    const row=Math.floor(i/cols);
+    ctx.drawImage(tile.canvas,col*S.ptw,row*S.pth,S.ptw,S.pth);
+  }
+
+  const img=ctx.getImageData(0,0,atlas.width,atlas.height).data;
+  const out=[];
+  for(let i=0;i<img.length;i+=4){
+    const a=img[i+3];
+    out.push(a===0?'FFF':rgb444Hex(img[i],img[i+1],img[i+2]));
+  }
+
+  const blob=new Blob([out.join('\n')+'\n'],{type:'text/plain'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='palette.mem';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ===== IMPORT LEVEL =====
+function doLoadLevel(f){
+  const ext=f.name.split('.').pop().toLowerCase();
+  if(ext==='json'){
+    f.text().then(t=>{const o=JSON.parse(t);S.lw=o.levelWidth;S.lh=o.levelHeight;if(o.tileWidth)S.tw=o.tileWidth;if(o.tileHeight)S.th=o.tileHeight;S.data=new Uint16Array(S.lw*S.lh);for(let y=0;y<S.lh;y++)for(let x=0;x<S.lw;x++)S.data[y*S.lw+x]=o.data[y][x];updInfo();render();updDP()});
+  }else if(ext==='txt'){
+    f.text().then(t=>{const ls=t.split('\n'),dl=[];let lw=0,lh=0,tw=0,th=0;for(const l of ls){const s=l.trim();if(s.startsWith('; LEVEL_WIDTH='))lw=parseInt(s.split('=')[1]);else if(s.startsWith('; LEVEL_HEIGHT='))lh=parseInt(s.split('=')[1]);else if(s.startsWith('; TILE_WIDTH='))tw=parseInt(s.split('=')[1]);else if(s.startsWith('; TILE_HEIGHT='))th=parseInt(s.split('=')[1]);else if(s&&!s.startsWith(';'))dl.push(s)}if(dl.length){if(!lw)lw=dl[0].split(/\s+/).length;if(!lh)lh=dl.length;if(tw)S.tw=tw;if(th)S.th=th;S.lw=lw;S.lh=lh;S.data=new Uint16Array(lw*lh);for(let y=0;y<lh&&y<dl.length;y++){const v=dl[y].split(/\s+/);for(let x=0;x<lw&&x<v.length;x++)S.data[y*lw+x]=parseInt(v[x],16)}updInfo();render();updDP()}});
+  }else if(ext==='mem'){
+    f.text().then(t=>{
+      const ls=t.split('\n'),dl=[];let lw=0,lh=0,tw=0,th=0;
+      for(const l of ls){
+        const s=l.trim();
+        if(s.startsWith('; LEVEL_WIDTH='))lw=parseInt(s.split('=')[1],10);
+        else if(s.startsWith('; LEVEL_HEIGHT='))lh=parseInt(s.split('=')[1],10);
+        else if(s.startsWith('; TILE_WIDTH='))tw=parseInt(s.split('=')[1],10);
+        else if(s.startsWith('; TILE_HEIGHT='))th=parseInt(s.split('=')[1],10);
+        else if(s&&!s.startsWith(';'))dl.push(s);
+      }
+      if(dl.length){
+        if(!lw)lw=dl[0].split(/\s+/).length;
+        if(!lh)lh=dl.length;
+        if(tw)S.tw=tw;
+        if(th)S.th=th;
+        S.lw=lw;S.lh=lh;S.data=new Uint16Array(lw*lh);
+        for(let y=0;y<lh&&y<dl.length;y++){
+          const v=dl[y].split(/\s+/);
+          for(let x=0;x<lw&&x<v.length;x++)S.data[y*lw+x]=parseInt(v[x],16);
+        }
+        updInfo();render();updDP();
+        return;
+      }
+      f.arrayBuffer().then(buf=>{const v=new DataView(buf);S.lw=v.getUint16(4,true);S.lh=v.getUint16(6,true);S.tw=v.getUint16(8,true);S.th=v.getUint16(10,true);S.data=new Uint16Array(S.lw*S.lh);for(let i=0;i<S.data.length;i++)S.data[i]=v.getUint16(16+i*2,true);updInfo();render();updDP()});
+    });
+  }
+}
+
+})();
+</script>
+</body>
+</html>
