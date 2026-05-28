@@ -68,13 +68,17 @@ input[type="file"]{display:none}
 .top .logo{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;color:var(--acc);letter-spacing:2px;text-transform:uppercase;margin-right:12px;white-space:nowrap}
 .top .logo span{color:var(--td);font-weight:400}
 .tg{display:flex;align-items:center;gap:4px;padding:0 8px;border-left:1px solid var(--bdr);height:30px}
+.tg-title{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--td);text-transform:uppercase;letter-spacing:1px;margin-right:4px;white-space:nowrap}
 
 .ma{display:flex;flex:1;overflow:hidden}
 
 /* Palette */
 .pp{width:260px;min-width:260px;background:var(--bg1);border-right:1px solid var(--bdr);display:flex;flex-direction:column;overflow:hidden}
 .pp-h{padding:8px 12px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--td)}
-.pp-a{display:flex;gap:4px;padding:6px 10px;border-bottom:1px solid var(--bdr)}
+.pp-a{display:flex;gap:4px;padding:6px 10px;border-bottom:1px solid var(--bdr);flex-wrap:wrap}
+.pp-sec{width:100%;display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.pp-sec+.pp-sec{padding-top:4px;border-top:1px solid var(--bdr)}
+.pp-sec .tg-title{width:48px;margin-right:2px}
 .pp-gw{flex:1;overflow-y:auto;padding:6px}
 .pp-g{display:grid;gap:2px}
 .pt{border:2px solid transparent;cursor:pointer;position:relative;background:var(--bg0);transition:border-color .1s}
@@ -405,6 +409,7 @@ const lc=$('lc'), lx=lc.getContext('2d');
 S.data=new Uint16Array(S.lw*S.lh);
 S.tiles=[{canvas:checker(S.ptw,S.pth)}];
 rebuildPal(); updInfo(); setupCV(); render(); updDP();
+cleanUpFileControls();
 
 // ===== WIRE BUTTONS =====
 $('btnNew').onclick=()=>openLevelModal('new');
@@ -432,6 +437,65 @@ $('teNo').onclick=()=>teEl.classList.remove('vis');
 $('palCancel').onclick=()=>$('palM').classList.remove('vis');
 $('palTrim').onclick=trimPaletteEndForExport;
 $('palExport').onclick=()=>{exportPaletteMem();$('palM').classList.remove('vis')};
+
+function cleanUpFileControls(){
+  const set=(id,text,title)=>{
+    const el=$(id);
+    if(!el)return;
+    el.textContent=text;
+    if(title)el.title=title;
+  };
+  const label=(group,text)=>{
+    if(!group||group.querySelector('.tg-title'))return;
+    const s=document.createElement('span');
+    s.className='tg-title';
+    s.textContent=text;
+    group.insertBefore(s,group.firstChild);
+  };
+
+  set('btnNew','New Map','Create a new level/map grid.');
+  set('btnResize','Map Size','Change level width, height, and level tile size.');
+  set('btnLoad','Load Map','Load level map data: .txt, .mem, or .json.');
+  set('xMem','Save Map .mem','Export only the level map tile IDs.');
+  set('xTxt','Save Map .txt','Export only the level map tile IDs.');
+  set('xJson','Save Map .json','Export only the level map tile IDs.');
+  set('btnImp2','Cut Tileset Image','Import an image and cut it into palette tiles.');
+  set('btnPalLoad','Load Palette .mem','Load palette/tile pixel data, not level map data.');
+  set('xPalMem','Export Palette .mem','Export palette/tile pixel data, not level map data.');
+  set('btnBlank','Add Blank','Add a blank palette tile.');
+  set('btnTileLeft','Move Left','Move selected palette tile left.');
+  set('btnTileRight','Move Right','Move selected palette tile right.');
+  set('btnClear','Clear Palette','Remove palette tiles and clear level painting.');
+  set('tPaint','Paint');set('tErase','Erase');set('tFill','Fill');set('tPick','Pick');
+
+  const topGroups=document.querySelectorAll('.top .tg');
+  label(topGroups[0],'Level');
+  label(topGroups[1],'Tools');
+  label(topGroups[2],'Map File');
+
+  const duplicateImport=$('btnImp');
+  if(duplicateImport)duplicateImport.style.display='none';
+  const palExport=$('xPalMem'), palLoad=$('btnPalLoad');
+  if(palExport&&palLoad&&palLoad.parentNode!==palExport.parentNode){
+    palLoad.insertAdjacentElement('afterend',palExport);
+  }
+  const palBar=document.querySelector('.pp-a');
+  if(palBar&&!palBar.querySelector('.pp-sec')){
+    const makeSec=(name,ids)=>{
+      const sec=document.createElement('div');
+      sec.className='pp-sec';
+      const s=document.createElement('span');
+      s.className='tg-title';
+      s.textContent=name;
+      sec.appendChild(s);
+      ids.forEach(id=>{const el=$(id);if(el)sec.appendChild(el)});
+      palBar.appendChild(sec);
+    };
+    makeSec('Image',['btnImp2']);
+    makeSec('Pal Mem',['btnPalLoad','xPalMem']);
+    makeSec('Edit',['btnBlank','btnTileLeft','btnTileRight','btnClear']);
+  }
+}
 
 // Tileset editor inputs
 teCols.addEventListener('input',teFromCR);
